@@ -1,0 +1,121 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DEMS - Digital Evidence Management System</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#eceff2;--card:#fff;--ink:#14213d;--mut:#5b6677;--line:#d3d9e0;--tag:#f2b21b;--c:#c0392b;--h:#d9731a;--m:#2f6fb0;--l:#7a8594}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 'Public Sans',system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+h1,h2,h3{font-family:'Source Serif 4',Georgia,serif;margin:0 0 .5rem}
+header{background:var(--ink);color:#fff;display:flex;gap:1rem;align-items:center;padding:.6rem 1.2rem;flex-wrap:wrap}
+header b{font:700 1.2rem 'Source Serif 4',serif;margin-right:1rem}nav{display:flex;gap:.25rem;flex:1;flex-wrap:wrap}
+nav button,.ghost{background:none;border:0;color:#cdd5e0;padding:.45rem .8rem;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{background:#fff;color:var(--ink)}main{max-width:1150px;margin:1.2rem auto;padding:0 1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:1rem;margin-bottom:1rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.8rem}
+input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:.5rem;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+label{font-size:13px;color:var(--mut);display:block;margin-bottom:.2rem}.btn{background:var(--ink);color:#fff;border:0;padding:.55rem 1rem;border-radius:6px;cursor:pointer}
+.btn.alt{background:#fff;color:var(--ink);border:1px solid var(--ink)}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--tag);outline-offset:1px}
+.tag{display:inline-block;background:var(--tag);color:#3a2a00;font-weight:600;font-size:12px;padding:.1rem .6rem .1rem 1.1rem;border-radius:3px 10px 10px 3px;position:relative}
+.tag:before{content:'';position:absolute;left:.4rem;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--card)}
+.p{font-size:12px;font-weight:600;color:#fff;padding:.1rem .5rem;border-radius:10px}.Critical{background:var(--c)}.High{background:var(--h)}.Medium{background:var(--m)}.Low{background:var(--l)}
+.item{display:flex;gap:.8rem;align-items:center;padding:.7rem 0;border-bottom:1px solid var(--line);cursor:pointer;flex-wrap:wrap}.item:last-child{border:0}.item:hover{background:#f6f8fa}
+.item .t{flex:1;min-width:200px}.mut{color:var(--mut);font-size:13px}.stat{font:700 2rem 'Source Serif 4',serif}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:.4rem;border-bottom:1px solid var(--line);vertical-align:top}
+.tl{border-left:3px solid var(--tag);margin-left:.5rem;padding-left:1rem}.tl h3{font-size:1rem;margin-top:1rem}
+.hash{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;background:var(--paper);padding:.4rem;border-radius:4px}
+dialog{border:0;border-radius:10px;max-width:760px;width:95%;padding:1.2rem}dialog::backdrop{background:#14213d99}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:end}.row>*{flex:1;min-width:130px}.bar{height:8px;background:var(--tag);border-radius:4px}
+#login{max-width:340px;margin:12vh auto}.err{color:var(--c);min-height:1.3em}
+@media(prefers-reduced-motion:no-preference){dialog[open]{animation:pop .15s}@keyframes pop{from{transform:translateY(8px);opacity:0}}}
+</style></head><body>
+<div id="app"></div><dialog id="dlg"></dialog>
+<script>
+const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=s=>document.querySelector(s), fmt=d=>new Date(d+(d.endsWith('Z')||d.includes('+')?'':'Z')).toLocaleString();
+const day=d=>new Date(d).toLocaleDateString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+let U,CASES=[],EV=[],tab='dash',mode='list',F={sort:'asc'};
+async function api(p,o={}){const r=await fetch('/api'+p,{credentials:'same-origin',...o});
+ if(r.status==401&&p!='/login'&&p!='/me'){U=null;return start()}
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||'Something went wrong');return j}
+const post=(p,b)=>api(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+const opts=(a,sel,all)=>(all?`<option value="">${all}</option>`:'')+a.map(x=>`<option ${x==sel?'selected':''}>${E(x)}</option>`).join('');
+const copts=sel=>CASES.map(c=>`<option value="${c.id}" ${c.id==sel?'selected':''}>${E(c.number)} - ${E(c.title)}</option>`).join('');
+const prio=p=>`<span class="p ${p}">${p}</span>`;
+
+async function start(){
+ try{U=await api('/me')}catch{}
+ if(!U)return $('#app').innerHTML=`<form id="login" class="card" onsubmit="doLogin(event)"><h1>DEMS</h1><p class="mut">Digital Evidence Management System. Sign in to continue.</p>
+  <label>Username</label><input name="u" autocomplete="username" required><br><br><label>Password</label><input name="p" type="password" autocomplete="current-password" required>
+  <p class="err" id="err"></p><button class="btn">Sign in</button></form>`;
+ CASES=await api('/cases');shell()}
+async function doLogin(e){e.preventDefault();const f=new FormData(e.target);
+ try{await post('/login',{username:f.get('u'),password:f.get('p')});start()}catch(x){$('#err').textContent=x.message}}
+function shell(){
+ const tabs=[['dash','Dashboard'],['ev','Evidence'],...(U.role!='viewer'?[['up','Add evidence']]:[]),['cases','Cases'],...(U.role=='admin'?[['audit','Audit log'],['users','Users']]:[])];
+ $('#app').innerHTML=`<header><b>DEMS</b><nav>${tabs.map(t=>`<button class="${tab==t[0]?'on':''}" onclick="tab='${t[0]}';shell()">${t[1]}</button>`).join('')}</nav>
+  <span class="mut" style="color:#cdd5e0">${E(U.name)} (${U.role})</span><button class="ghost" onclick="api('/logout',{method:'POST'}).then(()=>{U=null;start()})">Sign out</button></header><main id="m"></main>`;
+ ({dash,ev:evid,up:upload,cases:casesView,audit,users}[tab])()}
+
+async function dash(){const s=await api('/stats');
+ const bars=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="mut">${E(k)} (${v})</div><div class="bar" style="width:${v/s.total*100}%"></div>`).join('')||'<p class="mut">No evidence yet.</p>';
+ $('#m').innerHTML=`<h2>Dashboard</h2><div class="grid"><div class="card"><div class="stat">${s.total}</div>evidence items</div><div class="card"><div class="stat">${s.cases}</div>cases</div></div>
+ <div class="grid"><div class="card"><h3>By department</h3>${bars(s.by_dept)}</div><div class="card"><h3>By priority</h3>${bars(s.by_priority)}</div><div class="card"><h3>By type</h3>${bars(s.by_type)}</div></div>`}
+
+async function evid(){
+ const q=new URLSearchParams(Object.entries(F).filter(([k,v])=>v&&k!='sort'));EV=await api('/evidence?'+q);
+ const po={Critical:0,High:1,Medium:2,Low:3},s=F.sort;
+ EV.sort((a,b)=>s=='prio'?po[a.priority]-po[b.priority]:s=='up'?b.uploaded_at.localeCompare(a.uploaded_at):s=='desc'?b.collected_at.localeCompare(a.collected_at):a.collected_at.localeCompare(b.collected_at));
+ const fi=(k,l,t='text')=>`<div><label>${l}</label><input type="${t}" value="${E(F[k]||'')}" onchange="F['${k}']=this.value;evid()"></div>`;
+ const fs=(k,l,h)=>`<div><label>${l}</label><select onchange="F['${k}']=this.value;evid()">${h}</select></div>`;
+ const item=e=>`<div class="item" onclick="open_('${e.eid}')"><span class="tag">${e.eid}</span><div class="t"><b>${E(e.title)}</b><div class="mut">${E(e.etype)} | ${E(e.dept)} | collected ${fmt(e.collected_at)}</div></div>${prio(e.priority)}</div>`;
+ let body=!EV.length?'<p class="mut">No evidence matches. Change the filters or add evidence.</p>':'';
+ if(mode=='list')body+=EV.map(item).join('');
+ if(mode=='time'){const g={};EV.forEach(e=>(g[day(e.collected_at)]??=[]).push(e));body+=`<div class="tl">${Object.entries(g).map(([d,a])=>`<h3>${d}</h3>${a.map(item).join('')}`).join('')}</div>`}
+ if(mode=='dept'){const g={};EV.forEach(e=>(g[e.dept]??=[]).push(e));body+=Object.entries(g).map(([d,a])=>`<h3>${E(d)} <span class="mut">(${a.length})</span></h3>${a.map(item).join('')}`).join('')}
+ $('#m').innerHTML=`<h2>Evidence</h2><div class="card"><div class="row">${fi('q','Search ID, title, tag, keyword')}
+  ${fs('case_id','Case','<option value="">All cases</option>'+copts(F.case_id))}${fs('dept','Department',opts(U.depts,F.dept,'All departments'))}
+  ${fs('etype','Type',opts(U.types,F.etype,'All types'))}${fs('priority','Priority',opts(U.prios,F.priority,'All priorities'))}
+  ${fi('date_from','Collected from','date')}${fi('date_to','Collected to','date')}
+  ${fs('sort','Sort by',`<option value="asc" ${s=='asc'?'selected':''}>Collected: oldest first</option><option value="desc" ${s=='desc'?'selected':''}>Collected: newest first</option><option value="up" ${s=='up'?'selected':''}>Recently uploaded</option><option value="prio" ${s=='prio'?'selected':''}>Priority</option>`)}</div>
+  <br><div class="row" style="justify-content:flex-start">${[['list','List'],['time','Timeline'],['dept','By department']].map(m=>`<button class="btn ${mode==m[0]?'':'alt'}" style="flex:0" onclick="mode='${m[0]}';evid()">${m[1]}</button>`).join('')}</div></div>
+  <div class="card">${body}</div>`}
+
+async function open_(eid){const e=await api('/evidence/'+eid),d=$('#dlg');
+ const prev=e.mime.startsWith('image/')?`<img src="/api/evidence/${eid}/file" style="max-width:100%;border-radius:6px">`:e.mime.startsWith('video/')?`<video controls src="/api/evidence/${eid}/file" style="max-width:100%"></video>`:e.mime.startsWith('audio/')?`<audio controls src="/api/evidence/${eid}/file"></audio>`:e.mime=='application/pdf'?`<iframe src="/api/evidence/${eid}/file" style="width:100%;height:340px;border:1px solid var(--line)"></iframe>`:'<p class="mut">No preview for this file type. Use Download.</p>';
+ const can=U.role!='viewer',cs=CASES.find(c=>c.id==e.case_id);
+ d.innerHTML=`<span class="tag">${e.eid}</span> ${prio(e.priority)}<h2>${E(e.title)}</h2><p>${E(e.description)}</p>
+ <table><tr><th>Case</th><td>${E(cs?.number)}</td><th>Type / Dept</th><td>${E(e.etype)} / ${E(e.dept)}</td></tr><tr><th>Collected</th><td>${fmt(e.collected_at)} by ${E(e.collected_by)}</td><th>Uploaded</th><td>${fmt(e.uploaded_at)}</td></tr>
+ <tr><th>Location</th><td>${E(e.location)||'-'}</td><th>Tags</th><td>${E(e.tags)||'-'}</td></tr><tr><th>File</th><td>${E(e.filename)} (${(e.size/1024).toFixed(1)} KB)</td><th>Held by</th><td>${E(e.holder)}</td></tr>
+ ${Object.keys(e.meta).length?`<tr><th>Auto-extracted</th><td colspan=3>${E(JSON.stringify(e.meta))}</td></tr>`:''}</table>
+ <p><b>SHA-256</b></p><div class="hash">${e.sha256}</div><p id="vr"></p><br>${prev}<br>
+ <div class="row" style="justify-content:flex-start;margin:.8rem 0"><a class="btn" style="flex:0;text-decoration:none" href="/api/evidence/${eid}/file?download=1">Download</a>
+ ${can?`<button class="btn alt" style="flex:0" onclick="verify('${eid}')">Verify integrity</button>`:''}<button class="btn alt" style="flex:0" onclick="$('#dlg').close()">Close</button></div>
+ ${can?`<div class="row"><input id="to" placeholder="Transfer to (username)"><input id="why" placeholder="Reason"><button class="btn alt" onclick="xfer('${eid}')">Transfer</button></div>`:''}
+ <h3>Chain of custody</h3><table>${e.custody.map(c=>`<tr><td>${fmt(c.ts)}</td><td>${E(c.user)}</td><td><b>${c.action}</b></td><td class="mut">${E(c.detail)}</td></tr>`).join('')}</table>`;d.showModal()}
+async function verify(id){const r=await post(`/evidence/${id}/verify`,{});$('#vr').innerHTML=r.ok?'<b style="color:#1e7e34">Integrity verified. The file matches its original hash.</b>':'<b style="color:var(--c)">WARNING: the file no longer matches its original hash.</b>'}
+async function xfer(id){try{await post(`/evidence/${id}/transfer`,{to:$('#to').value,reason:$('#why').value});open_(id)}catch(x){alert(x.message)}}
+
+function upload(){const now=new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16);
+ $('#m').innerHTML=`<h2>Add evidence</h2><form class="card" onsubmit="doUp(event)"><div class="grid">
+ <div><label>Case</label><select name="case_id" required>${copts()}</select></div><div><label>File (max 25 MB)</label><input type="file" name="file" required></div>
+ <div><label>Title</label><input name="title" required></div><div><label>Date and time collected</label><input type="datetime-local" name="collected_at" value="${now}" required></div>
+ <div><label>Evidence type</label><select name="etype"><option value="Auto">Auto-detect from file</option>${opts(U.types)}</select></div>
+ <div><label>Department</label><select name="dept"><option value="Auto">Auto-suggest</option>${opts(U.depts)}</select></div>
+ <div><label>Priority</label><select name="priority">${opts(U.prios,'Medium')}</select></div><div><label>Collected by</label><input name="collected_by" placeholder="Defaults to you"></div>
+ <div><label>Location found</label><input name="location"></div><div><label>Tags (comma separated)</label><input name="tags"></div></div><br>
+ <label>Description</label><textarea name="description" rows="3"></textarea><p class="mut">Upload date is recorded automatically. A SHA-256 hash is computed and the file is stored encrypted.</p><p class="err" id="err"></p><button class="btn">Upload evidence</button></form>`}
+async function doUp(e){e.preventDefault();$('#err').textContent='Uploading...';
+ try{const r=await api('/evidence',{method:'POST',body:new FormData(e.target)});tab='ev';shell();open_(r.eid)}catch(x){$('#err').textContent=x.message}}
+
+function casesView(){$('#m').innerHTML=`<h2>Cases</h2>${U.role!='viewer'?`<form class="card" onsubmit="addCase(event)"><div class="row"><input name="number" placeholder="Case number, e.g. FIR-2026-014" required><input name="title" placeholder="Title" required>
+ <input name="crime_type" list="ct" placeholder="Crime type" required><datalist id="ct"><option>Murder<option>Theft<option>Cybercrime<option>Fraud<option>Assault<option>Kidnapping</datalist><button class="btn">Create case</button></div></form>`:''}
+ <div class="card">${CASES.map(c=>`<div class="item" onclick="F={sort:'asc',case_id:'${c.id}'};tab='ev';shell()"><span class="tag">${E(c.number)}</span><div class="t"><b>${E(c.title)}</b><div class="mut">${E(c.crime_type)} | ${c.status} | ${c.evidence_count} evidence</div></div>
+ <a href="/api/cases/${c.id}/report" target="_blank" onclick="event.stopPropagation()">Report</a></div>`).join('')||'<p class="mut">No cases yet. Create one first, then add evidence to it.</p>'}</div>`}
+async function addCase(e){e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{await post('/cases',f);CASES=await api('/cases');casesView()}catch(x){alert(x.message)}}
+
+async function audit(){const a=await api('/audit');$('#m').innerHTML=`<h2>Audit log</h2><div class="card"><table><tr><th>Time</th><th>User</th><th>Action</th><th>Evidence</th><th>Detail</th></tr>${a.map(l=>`<tr><td>${fmt(l.ts)}</td><td>${E(l.user)}</td><td>${l.action}</td><td>${E(l.evidence_id||'')}</td><td class="mut">${E(l.detail)}</td></tr>`).join('')}</table></div>`}
+async function users(){const a=await api('/users');$('#m').innerHTML=`<h2>Users</h2><form class="card" onsubmit="addUser(event)"><div class="row"><input name="username" placeholder="Username" required><input name="name" placeholder="Full name" required>
+ <input name="password" type="password" placeholder="Password (8+ chars)" required><select name="role"><option>investigator<option>viewer<option>admin</select><button class="btn">Add user</button></div></form>
+ <div class="card"><table>${a.map(x=>`<tr><td>${E(x.username)}</td><td>${E(x.name)}</td><td>${x.role}</td></tr>`).join('')}</table></div>`}
+async function addUser(e){e.preventDefault();try{await post('/users',Object.fromEntries(new FormData(e.target)));users()}catch(x){alert(x.message)}}
+start();
+</script></body></html>
